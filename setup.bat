@@ -23,63 +23,66 @@ for /f "usebackq tokens=1,2,3 delims=|" %%A in ("%CONFIG_FILE%") do (
     set "REPO_URL=%%B"
     set "BRANCH=%%C"
 
-    REM Skip comments
-    echo !FOLDER_NAME! | findstr /b "#" >nul 2>&1 && goto :continue
-    REM Skip empty lines
-    if "!FOLDER_NAME!"=="" goto :continue
-
-    set "TARGET_DIR=%ROOT_DIR%\!FOLDER_NAME!"
-
-    echo --------------------------------------------------
-    echo Processing Service: !FOLDER_NAME!
-    echo   Repo: !REPO_URL!
-    echo   Branch: !BRANCH!
-
-    REM Create directory if it doesn't exist
-    if not exist "!TARGET_DIR!" (
-        echo   ^> Creating directory !TARGET_DIR!...
-        mkdir "!TARGET_DIR!"
+    REM Check if line is comment or empty
+    set "IS_VALID=true"
+    if "!FOLDER_NAME!"=="" set "IS_VALID=false"
+    if defined FOLDER_NAME (
+        echo !FOLDER_NAME! | findstr /b "#" >nul 2>&1 && set "IS_VALID=false"
     )
 
-    pushd "!TARGET_DIR!"
+    if "!IS_VALID!"=="true" (
+        set "TARGET_DIR=%ROOT_DIR%\!FOLDER_NAME!"
 
-    REM Initialize git if not already a repo
-    if not exist ".git" (
-        echo   ^> Initializing git...
-        git init
+        echo --------------------------------------------------
+        echo Processing Service: !FOLDER_NAME!
+        echo   Repo: !REPO_URL!
+        echo   Branch: !BRANCH!
+
+        REM Create directory if it doesn't exist
+        if not exist "!TARGET_DIR!" (
+            echo   ^> Creating directory !TARGET_DIR!...
+            mkdir "!TARGET_DIR!"
+        )
+
+        pushd "!TARGET_DIR!"
+
+        REM Initialize git if not already a repo
+        if not exist ".git" (
+            echo   ^> Initializing git...
+            git init
+        )
+
+        REM Add or update remote
+        git remote | findstr /b "origin" >nul 2>&1
+        if !errorlevel! neq 0 (
+            echo   ^> Adding remote origin...
+            git remote add origin "!REPO_URL!"
+        ) else (
+            echo   ^> Remote origin exists. Updating URL...
+            git remote set-url origin "!REPO_URL!"
+        )
+
+        REM Fetch
+        echo   ^> Fetching from origin...
+        git fetch origin
+
+        REM Checkout and Pull
+        echo   ^> Checking out !BRANCH!...
+        git checkout "!BRANCH!"
+
+        echo   ^> Pulling latest changes...
+        git pull origin "!BRANCH!"
+
+        popd
+
+        REM 3. Build
+        call :build_project "!TARGET_DIR!" "!FOLDER_NAME!"
     )
-
-    REM Add or update remote
-    git remote | findstr /b "origin" >nul 2>&1
-    if !errorlevel! neq 0 (
-        echo   ^> Adding remote origin...
-        git remote add origin "!REPO_URL!"
-    ) else (
-        echo   ^> Remote origin exists. Updating URL...
-        git remote set-url origin "!REPO_URL!"
-    )
-
-    REM Fetch
-    echo   ^> Fetching from origin...
-    git fetch origin
-
-    REM Checkout and Pull
-    echo   ^> Checking out !BRANCH!...
-    git checkout "!BRANCH!"
-
-    echo   ^> Pulling latest changes...
-    git pull origin "!BRANCH!"
-
-    popd
-
-    REM 3. Build
-    call :build_project "!TARGET_DIR!" "!FOLDER_NAME!"
-
-    :continue
 )
 
 echo --------------------------------------------------
 echo Setup and Build completed successfully!
+pause
 goto :eof
 
 REM ============================================================
